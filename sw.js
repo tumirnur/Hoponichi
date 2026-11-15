@@ -1,5 +1,5 @@
 // Офлайн-оболочка «Ежедневник». При обновлении файлов увеличь номер версии.
-const V = "techo-3";
+const V = "techo-4";
 const CORE = ["./", "index.html", "manifest.webmanifest"];
 const EXTRA = ["icon-192.png", "icon-512.png", "apple-touch-icon.png", "pdf.min.js", "pdf.worker.min.js"];
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net"];
