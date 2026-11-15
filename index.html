@@ -53,6 +53,8 @@ button,select{font:inherit;color:inherit;background:none;border:0;padding:0;curs
 .stack.r{border-radius:0 3px 3px 0;box-shadow:4px 8px 18px rgba(60,45,25,.2)}
 .stack.l{border-radius:3px 0 0 3px;background:repeating-linear-gradient(to left,#fbf9f3 0 1px,#d6cfc0 1px 2px);box-shadow:-4px 8px 18px rgba(60,45,25,.2)}
 #shadowBase{position:absolute;box-shadow:0 14px 34px -10px rgba(60,45,25,.38),0 2px 6px rgba(60,45,25,.12)}
+#zw{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;will-change:transform}
+#zoomChip{position:absolute;left:50%;top:6px;transform:translateX(-50%);display:none;z-index:6;padding:6px 12px;border-radius:14px;background:rgba(60,65,73,.82);color:#fcfbf7;font-size:13px}
 #flip{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:none}
 .pal{position:fixed;z-index:25;left:0;top:0;touch-action:none}
 .palmini{width:58px;height:58px;border-radius:50%;background:rgba(252,251,247,.97);box-shadow:0 6px 22px rgba(40,30,20,.28),0 0 0 1px rgba(60,65,73,.08);display:grid;place-items:center;position:relative}
@@ -141,10 +143,11 @@ button,select{font:inherit;color:inherit;background:none;border:0;padding:0;curs
     <span id="status"></span>
   </header>
   <main id="stage">
-    <div id="shadowBase"></div>
+    <div id="zw"><div id="shadowBase"></div>
     <div class="stack l" id="stackL"></div><div class="stack r" id="stackR"></div>
-    <div id="book"></div>
+    <div id="book"></div></div>
     <canvas id="flip"></canvas>
+    <button id="zoomChip" title="Вернуть обычный размер"></button>
   </main>
   <div id="pal" class="pal">
     <button id="palMini" class="palmini" aria-label="Инструменты"><span id="palIcon"></span></button>
@@ -807,7 +810,8 @@ function hit(it,P,R){
 
 /* ===== layout & views ===== */
 const stage=$('#stage'),bookEl=$('#book'),flipC=$('#flip');
-const G={mode:'single',pw:0,ph:0,bookLeft:0,bookTop:0,spineX:0,dpr:1};
+const G={mode:'single',pw:0,ph:0,bookLeft:0,bookTop:0,spineX:0,dpr:1,rs:1};
+const Z={s:1,tx:0,ty:0};
 const views=new Set();let vis=[];
 function layout(){
   const sw=stage.clientWidth,sh=stage.clientHeight,spread=sw/sh>1.05&&sw>=640;G.mode=spread?'spread':'single';
@@ -818,6 +822,7 @@ function layout(){
   Object.assign(bookEl.style,{left:G.bookLeft+'px',top:G.bookTop+'px',width:bw+'px',height:G.ph+'px'});
   Object.assign($('#shadowBase').style,{left:G.bookLeft+'px',top:G.bookTop+'px',width:bw+'px',height:G.ph+'px'});
   flipC.width=Math.round(sw*G.dpr);flipC.height=Math.round(sh*G.dpr);
+  Z.s=1;Z.tx=0;Z.ty=0;G.rs=1;applyZoom();
 }
 function updateStacks(){
   const N=BOOK.length,prog=N>1?cur/(N-1):0,sl=$('#stackL'),sr=$('#stackR');
@@ -829,7 +834,7 @@ function pageCtx(c){const ctx=c.getContext('2d'),k=c.width/W;ctx.setTransform(k,
 function makeView(idx,cls,left){
   const page=BOOK[idx],el=document.createElement('div');el.className='slot '+cls;Object.assign(el.style,{left:left+'px',width:G.pw+'px',height:G.ph+'px'});
   const bg=document.createElement('canvas'),ink=document.createElement('canvas'),ov=document.createElement('canvas');
-  const pw=Math.round(G.pw*G.dpr),ph=Math.round(G.ph*G.dpr);for(const c of [bg,ink,ov]){c.width=pw;c.height=ph;}
+  const pw=Math.round(G.pw*G.dpr*G.rs),ph=Math.round(G.ph*G.dpr*G.rs);for(const c of [bg,ink,ov]){c.width=pw;c.height=ph;}
   el.append(bg,ink,ov);
   const v={idx,page,el,bg,ink,ov};drawTemplate(pageCtx(bg),page);renderInk(v);views.add(v);return v;
 }
@@ -837,7 +842,7 @@ function renderInk(v){const c=v.ink,ctx=c.getContext('2d');ctx.setTransform(1,0,
 function destroyView(v){v.el.remove();views.delete(v);for(const c of [v.bg,v.ink,v.ov]){c.width=c.height=0;}}
 function dogs(el,corners){for(const c of corners){const d=document.createElement('div');d.className='dog '+c;el.appendChild(d);}}
 function spreadK(){return Math.floor((cur+1)/2);}
-function renderViews(fade){
+function renderViews(fade){if(Z.s>1.001){Z.s=1;G.rs=1;applyZoom();}
   for(const v of [...views])destroyView(v);bookEl.innerHTML='';vis=[];
   if(G.mode==='spread'){
     const k=spreadK(),li=2*k-1,ri=2*k;
@@ -928,19 +933,19 @@ stage.addEventListener('touchstart',e=>{if(e.cancelable)e.preventDefault();},{pa
 stage.addEventListener('touchmove',e=>{if(e.cancelable)e.preventDefault();},{passive:false});
 stage.addEventListener('contextmenu',e=>e.preventDefault());
 const tTouch=new Map();let twoTap=null;
-stage.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){tTouch.set(e.pointerId,[e.clientX,e.clientY,performance.now()]);if(tTouch.size===2&&!drawing&&!flip){const ts=[...tTouch.values()];if(Math.abs(ts[0][2]-ts[1][2])<250){twoTap={t:performance.now(),pts:new Map(tTouch),moved:false};if(gesture&&!gesture.active)gesture=null;if(drawing&&tTouch.has(drawing.pid)&&drawing.kind!=='xf'){clearOv(drawing.v);drawing=null;}}}}},true);
-stage.addEventListener('pointermove',e=>{if(twoTap&&twoTap.pts.has(e.pointerId)){const p=twoTap.pts.get(e.pointerId);if(Math.hypot(e.clientX-p[0],e.clientY-p[1])>14)twoTap.moved=true;}},true);
-const tEnd=e=>{if(e.pointerType!=='touch')return;tTouch.delete(e.pointerId);if(twoTap&&tTouch.size===0){const ok=!twoTap.moved&&performance.now()-twoTap.t<400;twoTap=null;if(ok&&!flip){undo();toast('Отменено',900);}}};
+stage.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){tTouch.set(e.pointerId,[e.clientX,e.clientY,performance.now()]);if(tTouch.size===2&&!drawing&&!flip){const ts=[...tTouch.values()];if(Math.abs(ts[0][2]-ts[1][2])<250){twoTap={t:performance.now(),pts:new Map(tTouch),moved:false};startPinch();if(gesture&&!gesture.active)gesture=null;if(drawing&&tTouch.has(drawing.pid)&&drawing.kind!=='xf'){clearOv(drawing.v);drawing=null;}}}}},true);
+stage.addEventListener('pointermove',e=>{if(e.pointerType==='touch'&&tTouch.has(e.pointerId)){const t=tTouch.get(e.pointerId);t[3]=e.clientX;t[4]=e.clientY;pinchMove();}if(twoTap&&twoTap.pts.has(e.pointerId)){const p=twoTap.pts.get(e.pointerId);if(Math.hypot(e.clientX-p[0],e.clientY-p[1])>14)twoTap.moved=true;}},true);
+const tEnd=e=>{if(e.pointerType!=='touch')return;tTouch.delete(e.pointerId);if(pinch&&!pinch.ids.every(i=>tTouch.has(i))){pinch=null;settleZoom();}if(twoTap&&tTouch.size===0){const ok=!twoTap.moved&&performance.now()-twoTap.t<400;twoTap=null;if(ok&&!flip){undo();toast('Отменено',900);}}};
 stage.addEventListener('pointerup',tEnd,true);stage.addEventListener('pointercancel',tEnd,true);
 stage.addEventListener('pointerdown',e=>{
   const isPen=e.pointerType==='pen',isTouch=e.pointerType==='touch',isMouse=e.pointerType==='mouse';
   if(isPen){penDown=true;lastPen=performance.now();if(gesture)cancelGesture();}
   if(animating)return;
-  if(isTouch){if(penDown||performance.now()-lastPen<450)return;}
+  if(isTouch){if(pinch||penDown||performance.now()-lastPen<450)return;}
   if(drawing||gesture||flip)return;if(isMouse&&e.button!==0)return;
   const h=viewAt(e);
   if(h&&state.tool==='photo'&&((isPen&&!outerEdge(h,.045))||(isMouse&&!outerEdge(h))||(isTouch&&!outerEdge(h)))){photoDown(e,h);return;}
-  if(h&&((isPen&&!outerEdge(h,.045))||(isMouse&&!outerEdge(h))||(isTouch&&state.finger&&!outerEdge(h)))){startDraw(e,h);return;}
+  if(h&&((isPen&&(Z.s>1.02||!outerEdge(h,.045)))||(isMouse&&!outerEdge(h))||(isTouch&&state.finger&&!outerEdge(h)))){startDraw(e,h);return;}
   if(isPen&&!h)return;
   gesture={pid:e.pointerId,x0:e.clientX,y0:e.clientY,t0:performance.now(),active:false,trail:[[e.clientX,performance.now()]],hit:h};
   try{stage.setPointerCapture(e.pointerId);}catch(_){}
@@ -953,7 +958,9 @@ function up(e){if(e.pointerType==='pen'){penDown=false;lastPen=performance.now()
   if(drawing&&e.pointerId===drawing.pid){endDraw();return;}if(gesture&&e.pointerId===gesture.pid)endGesture(e);}
 stage.addEventListener('pointerup',up);stage.addEventListener('pointercancel',up);
 function moveGesture(e){
+  if(pinch){gesture=null;return;}
   const g=gesture,dx=e.clientX-g.x0,dy=e.clientY-g.y0;g.trail.push([e.clientX,performance.now()]);if(g.trail.length>6)g.trail.shift();
+  if(g.pan||(!g.active&&Z.s>1.02)){if(!g.pan){if(Math.hypot(dx,dy)<6)return;g.pan={tx:Z.tx,ty:Z.ty};}Z.tx=g.pan.tx+dx;Z.ty=g.pan.ty+dy;applyZoom();return;}
   if(!g.active){
     if(Math.hypot(dx,dy)<7)return;
     const sx=g.x0-stage.getBoundingClientRect().left;
@@ -967,7 +974,8 @@ function moveGesture(e){
 }
 function endGesture(e){
   const g=gesture;gesture=null;if(!g)return;
-  if(!g.active){if(performance.now()-g.t0<350&&g.hit)tapAt(g.hit);return;}
+  if(g.pan)return;
+  if(!g.active){if(performance.now()-g.t0<350){if(dblTap(g))return;if(g.hit)tapAt(g.hit);}return;}
   if(!flip||animating)return;
   const tr=g.trail,a=tr[0],b=tr[tr.length-1],vx=tr.length>1?(b[0]-a[0])/Math.max(1,b[1]-a[1])*flip.mx:0,prog=(G.pw-flip.F.x)/(2*G.pw);
   animateFlip(vx<-.35?true:vx>.35?false:prog>.42);
@@ -1179,6 +1187,32 @@ $('#menu').addEventListener('click',e=>{if(e.target.id==='menu')$('#menu').class
 $('#mPaste').onclick=async()=>{try{$('#mImp').value=await navigator.clipboard.readText();}catch(_){toast('Нажми в поле и выбери «Вставить»');$('#mImp').focus();}};
 $('#mDoImp').onclick=async()=>{const t=$('#mImp').value.trim();if(!t){toast('Сначала вставь скопированные записи');return;}try{const n=await importData(t);$('#mImp').value='';toast(n?`Перенесено страниц: ${n} ✓`:'Всё уже было перенесено');}catch(e){toast(e.message||'Не получилось прочитать записи');}};
 $('#mBackup').onclick=()=>{const blob=new Blob([JSON.stringify(exportData())],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ezhednevnik-${ymd(new Date())}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);};
+
+/* ===== увеличение страницы ===== */
+let pinch=null,lastTap=null,zt=null;
+function bookBox(){const bw=G.pw*(G.mode==='spread'?2:1);return {x:G.bookLeft,y:G.bookTop,w:bw,h:G.ph};}
+function clampZoom(){const sw=stage.clientWidth,sh=stage.clientHeight,b=bookBox(),s2=Z.s,M=24;
+  if(s2<=1.001){Z.s=1;Z.tx=0;Z.ty=0;return;}
+  const W2=b.w*s2,H2=b.h*s2;
+  if(W2<=sw-2*M)Z.tx=(sw-W2)/2-b.x*s2;else Z.tx=Math.min(M-b.x*s2,Math.max(sw-M-(b.x+b.w)*s2,Z.tx));
+  if(H2<=sh-2*M)Z.ty=(sh-H2)/2-b.y*s2;else Z.ty=Math.min(M-b.y*s2,Math.max(sh-M-(b.y+b.h)*s2,Z.ty));}
+function applyZoom(){clampZoom();const zw=$('#zw');if(zw)zw.style.transform=Z.s>1.001?`translate(${Z.tx}px,${Z.ty}px) scale(${Z.s})`:'';
+  const c=$('#zoomChip');if(c){c.style.display=Z.s>1.02?'block':'none';c.textContent=`${Math.round(Z.s*100)}% · вернуть`;}}
+function zoomAt(ns,cx,cy){const r=stage.getBoundingClientRect(),x=cx-r.left,y=cy-r.top,wx=(x-Z.tx)/Z.s,wy=(y-Z.ty)/Z.s;Z.s=Math.max(1,Math.min(4,ns));Z.tx=x-wx*Z.s;Z.ty=y-wy*Z.s;applyZoom();}
+function startPinch(){if(drawing||flip||tTouch.size!==2)return;const ids=[...tTouch.keys()],a=tTouch.get(ids[0]),b=tTouch.get(ids[1]);
+  pinch={ids,d0:Math.hypot(a[0]-b[0],a[1]-b[1])||1,s0:Z.s,m0:[(a[0]+b[0])/2,(a[1]+b[1])/2],tx0:Z.tx,ty0:Z.ty};if(gesture)gesture=null;}
+function pinchMove(){if(!pinch)return;const a=tTouch.get(pinch.ids[0]),b=tTouch.get(pinch.ids[1]);if(!a||!b)return;
+  const ax=a[3]??a[0],ay=a[4]??a[1],bx=b[3]??b[0],by=b[4]??b[1],d=Math.hypot(ax-bx,ay-by),m=[(ax+bx)/2,(ay+by)/2],r=stage.getBoundingClientRect();
+  const ns=Math.max(1,Math.min(4,pinch.s0*d/pinch.d0)),wx=(pinch.m0[0]-r.left-pinch.tx0)/pinch.s0,wy=(pinch.m0[1]-r.top-pinch.ty0)/pinch.s0;
+  Z.s=ns;Z.tx=m[0]-r.left-wx*ns;Z.ty=m[1]-r.top-wy*ns;applyZoom();}
+function dblTap(g){const now=performance.now(),p=[g.x0,g.y0];
+  if(lastTap&&now-lastTap.t<320&&Math.hypot(p[0]-lastTap.p[0],p[1]-lastTap.p[1])<40){lastTap=null;if(Z.s>1.05)resetZoom();else{zoomAt(2.2,p[0],p[1]);settleZoom();}return true;}
+  lastTap={t:now,p};return false;}
+function resetZoom(){Z.s=1;applyZoom();settleZoom();}
+function settleZoom(){clearTimeout(zt);zt=setTimeout(()=>{if(drawing||flip)return;const maxS=Math.min(4096/(G.pw*G.dpr),4096/(G.ph*G.dpr));const rs=Math.max(1,Math.min(2.5,Z.s<1.05?1:Math.ceil(Z.s*2)/2,maxS));
+  if(Math.abs(rs-G.rs)<.01)return;G.rs=rs;for(const v of vis){const pw=Math.round(G.pw*G.dpr*rs),ph=Math.round(G.ph*G.dpr*rs);for(const c of [v.bg,v.ink,v.ov]){c.width=pw;c.height=ph;}drawTemplate(pageCtx(v.bg),v.page);renderInk(v);}drawSelAll();},250);}
+$('#zoomChip').addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();resetZoom();});
+stage.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoomAt(Z.s*Math.exp(-e.deltaY*.01),e.clientX,e.clientY);settleZoom();},{passive:false});
 
 /* ===== плавающая палитра (как в Freeform) ===== */
 const PAL={x:null,y:null,open:false};
